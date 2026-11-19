@@ -1,0 +1,22 @@
+{
+  "api_key": "",
+  "base_url": "https://dashscope.aliyuncs.com",
+  "ws_url": "",
+  "model": "qwen-audio-3.0-asr-flash-streaming",
+  "language": "zh",
+  "audio_source": "loopback",
+  "device_index": null,
+  "max_sentence_silence": 1000,
+  "heartbeat": true,
+  "max_task_seconds": 3600,
+  "server_host": "127.0.0.1",
+  "server_port": 8765,
+  "font_size": 64,
+  "max_lines": 2,
+  "clear_after": 8,
+  "bottom": 6,
+  "text_color": "#ffffff",
+  "box_color": "rgba(0,0,0,0.52)",
+  "show_status": false,
+  "demo": false
+}

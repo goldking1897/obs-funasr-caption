@@ -1,0 +1,668 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Qwen-Audio 实时字幕 · 控制台</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0e1116;
+    --panel: #161b23;
+    --panel-2: #1c2230;
+    --line: #2a3240;
+    --text: #e7edf7;
+    --muted: #93a1b5;
+    --accent: #5aa9ff;
+    --accent-2: #2f7fe0;
+    --ok: #57d38c;
+    --warn: #f2b544;
+    --bad: #ff6b6b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: radial-gradient(1100px 500px at 20% -10%, #1b2a44 0%, var(--bg) 55%);
+    color: var(--text);
+    font: 14px/1.55 "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 22px 56px; }
+  header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; flex-wrap: wrap; margin-bottom: 20px; }
+  h1 { margin: 0; font-size: 24px; letter-spacing: .3px; }
+  .sub { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+  .header-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+  a.btn, button {
+    border: 1px solid var(--line);
+    background: var(--panel-2);
+    color: var(--text);
+    border-radius: 9px;
+    padding: 9px 15px;
+    font: inherit;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    transition: background .15s, border-color .15s, transform .05s;
+  }
+  a.btn:hover, button:hover { background: #253044; border-color: #3b4a61; }
+  button:active { transform: translateY(1px); }
+  button:disabled { opacity: .55; cursor: wait; }
+  .primary { background: linear-gradient(180deg, #4a9cf5, #2f7fe0); border-color: #2f7fe0; font-weight: 600; }
+  .primary:hover { background: linear-gradient(180deg, #63adff, #3a8aeb); }
+  .danger { color: #ffd1d1; border-color: #573033; background: #2a1a1c; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(320px, .85fr); gap: 18px; align-items: start; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px 18px 16px; margin-bottom: 18px; }
+  .card h2 { margin: 0 0 14px; font-size: 15px; letter-spacing: .4px; color: #cdd9ea; display: flex; align-items: center; gap: 8px; }
+  .card h2 .num { display: inline-flex; width: 21px; height: 21px; border-radius: 6px; background: #24334a; color: #9cc7ff; font-size: 12px; align-items: center; justify-content: center; }
+  .row { margin-bottom: 13px; }
+  .row:last-child { margin-bottom: 0; }
+  label.field { display: block; font-size: 12.5px; color: var(--muted); margin-bottom: 5px; }
+  input[type=text], input[type=password], input[type=number], select {
+    width: 100%;
+    background: #0f141c;
+    border: 1px solid var(--line);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 9px 11px;
+    font: inherit;
+    outline: none;
+  }
+  input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(90,169,255,.14); }
+  .hint { color: #7f8da3; font-size: 12px; margin-top: 5px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  @media (max-width: 560px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+  .inline { display: flex; gap: 10px; align-items: center; }
+  .inline input[type=text] { flex: 1; min-width: 0; }
+  .inline button { white-space: nowrap; flex: none; }
+  .check { display: flex; gap: 9px; align-items: flex-start; color: var(--muted); font-size: 13px; cursor: pointer; }
+  .check input { margin-top: 3px; accent-color: var(--accent-2); }
+  .source-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+  .source-tabs label { position: relative; }
+  .source-tabs input { position: absolute; opacity: 0; pointer-events: none; }
+  .source-tabs span { display: inline-block; padding: 8px 14px; border: 1px solid var(--line); border-radius: 8px; background: #101620; color: var(--muted); cursor: pointer; font-size: 13px; }
+  .source-tabs input:checked + span { border-color: var(--accent); color: #dcecff; background: #17263c; }
+  .status-line { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #5f6b7c; flex: none; box-shadow: 0 0 0 4px rgba(255,255,255,.04); }
+  .dot.listening { background: var(--ok); box-shadow: 0 0 12px rgba(87,211,140,.65); }
+  .dot.connecting, .dot.reconnecting, .dot.starting { background: var(--warn); animation: pulse 1.2s infinite; }
+  .dot.error, .dot.stopped { background: var(--bad); }
+  .dot.demo { background: #8bd17c; }
+  @keyframes pulse { 50% { opacity: .35; } }
+  .status-text { font-weight: 600; }
+  .message { color: var(--muted); font-size: 12.5px; word-break: break-word; }
+  .alert { margin-top: 10px; padding: 10px 12px; border-radius: 8px; font-size: 12.5px; display: none; white-space: pre-wrap; }
+  .alert.show { display: block; }
+  .alert.bad { background: #2a1719; border: 1px solid #5a2b30; color: #ffc9c9; }
+  .alert.good { background: #12251b; border: 1px solid #245238; color: #b6f0cd; }
+  .preview { position: relative; aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden; background: linear-gradient(135deg, #223047 0%, #37516f 48%, #1b2636 100%); border: 1px solid #33445c; margin-bottom: 14px; }
+  .preview .fake-bg { position: absolute; inset: 0; background: radial-gradient(circle at 25% 35%, rgba(255,255,255,.12), transparent 42%), linear-gradient(135deg, #27384f, #425f7e 55%, #1b2636); }
+  .preview .cap {
+    position: absolute; left: 50%; bottom: 9%; transform: translateX(-50%);
+    max-width: 92%; text-align: center; border-radius: 9px; padding: 4px 12px;
+    font-weight: 600; line-height: 1.24; text-shadow: 0 2px 6px rgba(0,0,0,.85);
+    overflow: hidden; white-space: normal; overflow-wrap: anywhere;
+    display: -webkit-box; -webkit-box-orient: vertical;
+  }
+  .preview .tag { position: absolute; top: 8px; left: 10px; font-size: 11px; color: rgba(255,255,255,.6); letter-spacing: .5px; }
+  .logs { max-height: 168px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; background: #0b0f15; padding: 8px 10px; font: 12px/1.5 Consolas, "Cascadia Mono", monospace; }
+  .logs div { color: #9fb1c8; padding: 2px 0; border-bottom: 1px dashed rgba(255,255,255,.04); word-break: break-word; }
+  .logs div:last-child { border-bottom: 0; }
+  .logs time { color: #5d6b7e; margin-right: 7px; }
+  .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .actions .spacer { flex: 1; }
+  .saved-tip { color: var(--ok); font-size: 12.5px; min-height: 19px; }
+  .kbd { font: 11px Consolas, monospace; background: #0f141c; border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
+  .footer { color: #6f7d91; font-size: 12px; margin-top: 18px; text-align: center; }
+  code { background: #0f141c; border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Qwen-Audio 实时字幕控制台</h1>
+      <p class="sub">阿里云百炼 Qwen-Audio-3.0-ASR-Flash-Streaming · 本地采集 · OBS 1080p 浏览器源</p>
+    </div>
+    <div class="header-actions">
+      <a class="btn" id="overlayLink" href="/overlay" target="_blank" rel="noopener">预览字幕页 ↗</a>
+      <button id="restartBtn" type="button">重新连接</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <div>
+      <section class="card">
+        <h2><span class="num">1</span>连接阿里云</h2>
+        <div class="row">
+          <label class="field" for="key">DashScope API Key</label>
+          <input id="key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-...">
+          <div class="hint" id="keyHint">还没有配置。到阿里云百炼控制台创建以 sk- 开头的 API Key，粘贴到这里（不是模型名）。</div>
+        </div>
+        <div class="grid2">
+          <div class="row">
+            <label class="field" for="baseUrl">服务地址（Base URL）</label>
+            <input id="baseUrl" type="text" spellcheck="false" placeholder="https://dashscope.aliyuncs.com">
+            <div class="hint">国内默认 https://dashscope.aliyuncs.com；也可填工作空间专属地址。</div>
+          </div>
+          <div class="row">
+            <label class="field" for="model">模型</label>
+            <input id="model" type="text" spellcheck="false" placeholder="qwen-audio-3.0-asr-flash-streaming">
+            <div class="hint">默认 qwen-audio-3.0-asr-flash-streaming；也兼容 fun-asr-realtime。</div>
+          </div>
+        </div>
+        <div class="grid2">
+          <div class="row">
+            <label class="field" for="language">语言提示</label>
+            <select id="language">
+              <option value="">自动 / 不指定</option>
+              <option value="zh">中文</option>
+              <option value="en">英语</option>
+              <option value="ja">日语</option>
+              <option value="ko">韩语</option>
+              <option value="vi">越南语</option>
+              <option value="th">泰语</option>
+              <option value="id">印尼语</option>
+              <option value="ms">马来语</option>
+              <option value="tl">菲律宾语</option>
+              <option value="hi">印地语</option>
+              <option value="ar">阿拉伯语</option>
+              <option value="fr">法语</option>
+              <option value="de">德语</option>
+              <option value="es">西班牙语</option>
+              <option value="pt">葡萄牙语</option>
+              <option value="ru">俄语</option>
+              <option value="it">意大利语</option>
+            </select>
+            <div class="hint">指定后可减少语种误判；中英混说建议选自动。</div>
+          </div>
+          <div class="row">
+            <label class="field" for="silence">断句静音（毫秒）</label>
+            <input id="silence" type="number" min="200" max="6000" step="100" value="1000">
+            <div class="hint">说话停顿超过该时长就定稿一句，200–6000。</div>
+          </div>
+        </div>
+        <div class="row">
+          <label class="field" for="wsUrl">高级：自定义 WebSocket 地址（可留空）</label>
+          <input id="wsUrl" type="text" spellcheck="false" placeholder="wss://.../api-ws/v1/inference">
+          <div class="hint">留空时按 Base URL 自动生成；使用工作空间专属域名时可填这里。</div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2><span class="num">2</span>音频来源</h2>
+        <div class="row">
+          <div class="source-tabs" id="sourceTabs">
+            <label><input type="radio" name="source" value="loopback"><span>系统声音（推荐）</span></label>
+            <label><input type="radio" name="source" value="mic"><span>麦克风</span></label>
+            <label><input type="radio" name="source" value="device"><span>指定设备</span></label>
+          </div>
+          <div class="hint">“系统声音”采集扬声器回环，能听到直播/视频/游戏里的声音；自己说话请选麦克风。</div>
+        </div>
+        <div class="row">
+          <label class="field" for="device">设备</label>
+          <div class="inline">
+            <select id="device"></select>
+            <button id="deviceRefresh" type="button" title="重新扫描设备">刷新</button>
+          </div>
+        </div>
+        <div class="grid2">
+          <div class="row">
+            <label class="check"><input id="heartbeat" type="checkbox"> 保持 WebSocket 心跳</label>
+          </div>
+          <div class="row">
+            <label class="field" for="maxTask">单任务最长秒数（0 表示不轮换）</label>
+            <input id="maxTask" type="number" min="0" max="86400" step="60" value="3600">
+          </div>
+        </div>
+        <div class="row" style="margin-top: 4px">
+          <label class="check"><input id="demo" type="checkbox"> 演示模式（本地示例字幕，不连接云端、不计费）</label>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2><span class="num">3</span>字幕样式</h2>
+        <div class="grid3">
+          <div class="row">
+            <label class="field" for="fontSize">字号（px，1080p 建议 64）</label>
+            <input id="fontSize" type="number" min="18" max="160" step="1" value="64">
+          </div>
+          <div class="row">
+            <label class="field" for="maxLines">每屏行数（默认 2）</label>
+            <input id="maxLines" type="number" min="1" max="4" step="1" value="2">
+          </div>
+          <div class="row">
+            <label class="field" for="bottomPct">距底部（%）</label>
+            <input id="bottomPct" type="number" min="0" max="50" step="1" value="6">
+          </div>
+        </div>
+        <div class="grid3">
+          <div class="row">
+            <label class="field" for="clearAfter">静音后清屏（秒，0 不清）</label>
+            <input id="clearAfter" type="number" min="0" max="120" step="1" value="8">
+          </div>
+          <div class="row">
+            <label class="field" for="textColor">文字颜色</label>
+            <div class="inline">
+              <input id="textColor" type="color" style="width:48px;height:38px;padding:2px;background:#0f141c;border:1px solid var(--line);border-radius:8px">
+              <input id="textColorText" type="text" spellcheck="false" value="#ffffff">
+            </div>
+          </div>
+          <div class="row">
+            <label class="field" for="boxColor">背景框</label>
+            <input id="boxColor" type="text" spellcheck="false" value="rgba(0,0,0,0.52)">
+          </div>
+        </div>
+        <div class="row">
+          <label class="check"><input id="showStatus" type="checkbox"> 在字幕页左上角显示连接状态</label>
+        </div>
+      </section>
+
+      <div class="actions">
+        <button class="primary" id="saveBtn" type="button">保存并应用</button>
+        <span class="saved-tip" id="savedTip"></span>
+        <span class="spacer"></span>
+        <button class="danger" id="clearBtn" type="button">清空字幕</button>
+      </div>
+    </div>
+
+    <div>
+      <section class="card">
+        <h2>运行状态</h2>
+        <div class="status-line">
+          <span class="dot" id="statusDot"></span>
+          <span class="status-text" id="statusText">读取中…</span>
+        </div>
+        <div class="message" id="messageText"></div>
+        <div class="alert bad" id="errorBox"></div>
+        <div class="alert good" id="savedAlert"></div>
+        <div style="margin-top:14px" class="message" id="audioInfo"></div>
+        <div style="margin-top:6px" class="message" id="wsInfo"></div>
+      </section>
+
+      <section class="card">
+        <h2>样式预览</h2>
+        <div class="preview">
+          <div class="fake-bg"></div>
+          <span class="tag" id="previewTag">OBS 1080p 两行预览</span>
+          <div class="cap" id="previewCap">字幕会显示在这里</div>
+        </div>
+        <div class="hint">预览只用于调样式，最终以 OBS 浏览器源为准。</div>
+      </section>
+
+      <section class="card">
+        <h2>日志</h2>
+        <div class="logs" id="logList"><div><time>--:--:--</time>等待事件…</div></div>
+      </section>
+
+      <section class="card">
+        <h2>OBS 设置</h2>
+        <div class="hint" style="line-height:1.8">
+          来源 → 添加 <b>浏览器</b>；URL 填<br>
+          <code id="overlayUrl">http://127.0.0.1:8765/overlay</code><br>
+          宽度 <b>1920</b>，高度 <b>1080</b>（与 1080p 画布一致，两行字幕在底部）；<br>
+          建议取消勾选“关闭源时关闭页面”，切换场景后字幕仍会更新；不要勾选“本地文件”。<br>
+          背景默认透明，直接叠在画面上即可。
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div class="footer">
+    本服务只监听本机。API Key 保存在本地 config.json，不会发送给浏览器。按
+    <span class="kbd">Ctrl</span> + <span class="kbd">C</span> 停止服务。
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const els = {
+    key: $("key"), keyHint: $("keyHint"), baseUrl: $("baseUrl"), wsUrl: $("wsUrl"),
+    model: $("model"), language: $("language"), silence: $("silence"),
+    device: $("device"), heartbeat: $("heartbeat"), maxTask: $("maxTask"), demo: $("demo"),
+    fontSize: $("fontSize"), maxLines: $("maxLines"), bottomPct: $("bottomPct"),
+    clearAfter: $("clearAfter"), textColor: $("textColor"), textColorText: $("textColorText"),
+    boxColor: $("boxColor"), showStatus: $("showStatus"),
+    saveBtn: $("saveBtn"), savedTip: $("savedTip"), clearBtn: $("clearBtn"),
+    restartBtn: $("restartBtn"), deviceRefresh: $("deviceRefresh"),
+    statusDot: $("statusDot"), statusText: $("statusText"), messageText: $("messageText"),
+    errorBox: $("errorBox"), savedAlert: $("savedAlert"),
+    audioInfo: $("audioInfo"), wsInfo: $("wsInfo"), previewCap: $("previewCap"), previewTag: $("previewTag"),
+    logList: $("logList"), overlayLink: $("overlayLink"), overlayUrl: $("overlayUrl")
+  };
+  let devices = { loopback: [], mic: [], default_loopback: null, default_mic: null };
+  let config = {};
+  let logs = [];
+  const stateLabels = {
+    starting: "正在启动", connecting: "正在连接阿里云", listening: "正在识别",
+    demo: "演示模式", reconnecting: "连接中断，正在重连", stopped: "已停止", error: "出错"
+  };
+
+  function sourceValue() {
+    const el = document.querySelector('input[name="source"]:checked');
+    return el ? el.value : "loopback";
+  }
+
+  function setSource(value) {
+    const el = document.querySelector(`input[name="source"][value="${value}"]`);
+    if (el) el.checked = true;
+    renderDeviceOptions();
+  }
+
+  function renderDeviceOptions(selected) {
+    const source = sourceValue();
+    const keep = selected !== undefined ? selected : els.device.value;
+    let list = [];
+    if (source === "loopback") list = devices.loopback || [];
+    else if (source === "mic") list = devices.mic || [];
+    else list = [...(devices.loopback || []), ...(devices.mic || [])];
+
+    els.device.innerHTML = "";
+    if (source !== "device") {
+      const auto = document.createElement("option");
+      auto.value = "";
+      auto.textContent = source === "loopback" ? "自动（默认扬声器回环）" : "自动（默认麦克风）";
+      els.device.appendChild(auto);
+    } else {
+      const pick = document.createElement("option");
+      pick.value = "";
+      pick.textContent = "请选择设备…";
+      els.device.appendChild(pick);
+    }
+    for (const d of list) {
+      const opt = document.createElement("option");
+      opt.value = String(d.index);
+      opt.textContent = `${d.name}${d.loopback ? " [回环]" : ""} · ${d.rate} Hz · ${d.channels} ch`;
+      els.device.appendChild(opt);
+    }
+    if (keep !== undefined && keep !== null && [...els.device.options].some(o => o.value === String(keep))) {
+      els.device.value = String(keep);
+    } else if (source === "device" && list.length) {
+      els.device.value = String(list[0].index);
+    }
+  }
+
+  function toHex(color) {
+    if (/^#[0-9a-fA-F]{6}$/.test(color || "")) return color;
+    if (/^#[0-9a-fA-F]{3}$/.test(color || "")) {
+      return "#" + color.slice(1).split("").map(c => c + c).join("");
+    }
+    return "#ffffff";
+  }
+
+  function applyStyleToPreview() {
+    const fs = Math.max(18, Math.min(160, Number(els.fontSize.value) || 64));
+    const lines = Math.max(1, Math.min(4, Number(els.maxLines.value) || 2));
+    els.previewTag.textContent = "OBS 1080p " + (lines === 1 ? "单行" : lines + " 行") + "预览";
+    els.previewCap.style.fontSize = Math.min(24, Math.max(11, fs * 0.31)) + "px";
+    els.previewCap.style.color = els.textColorText.value || "#ffffff";
+    els.previewCap.style.background = els.boxColor.value || "rgba(0,0,0,0.52)";
+    els.previewCap.style.webkitLineClamp = String(lines);
+  }
+
+  function previewText(text) {
+    text = String(text || "").trim();
+    if (!text) return "字幕会显示在这里";
+    return text.length > 26 ? text.slice(0, 25) + "…" : text;
+  }
+
+  function applyStyle(style) {
+    if (!style) return;
+    els.fontSize.value = style.font_size ?? 64;
+    els.maxLines.value = style.max_lines ?? 2;
+    els.bottomPct.value = style.bottom ?? 6;
+    els.clearAfter.value = style.clear_after ?? 8;
+    els.textColor.value = toHex(style.text_color || "#ffffff");
+    els.textColorText.value = style.text_color || "#ffffff";
+    els.boxColor.value = style.box_color || "rgba(0,0,0,0.52)";
+    els.showStatus.checked = !!style.show_status;
+    applyStyleToPreview();
+  }
+
+  function updateKeyHint() {
+    if (config.api_key_from_env) {
+      els.keyHint.textContent = "正在使用环境变量 DASHSCOPE_API_KEY；这里留空即可。";
+    } else if (config.api_key_set) {
+      els.keyHint.textContent = "已保存 API Key（出于安全不回显）。留空表示保持不变；输入新值可替换。";
+    } else {
+      els.keyHint.textContent = "还没有配置。到阿里云百炼控制台创建以 sk- 开头的 API Key，粘贴到这里（不是模型名）。";
+    }
+  }
+
+  function fillConfig(cfg, style) {
+    config = cfg || {};
+    els.baseUrl.value = config.base_url || "";
+    els.wsUrl.value = config.ws_url || "";
+    els.model.value = config.model || "qwen-audio-3.0-asr-flash-streaming";
+    els.language.value = config.language || "";
+    els.silence.value = config.max_sentence_silence ?? 1000;
+    els.heartbeat.checked = !!config.heartbeat;
+    els.maxTask.value = config.max_task_seconds ?? 3600;
+    els.demo.checked = !!config.demo;
+    setSource(config.audio_source || "loopback");
+    renderDeviceOptions(config.device_index == null ? "" : config.device_index);
+    applyStyle(style || config);
+    updateKeyHint();
+  }
+
+  function addLog(text, kind) {
+    const time = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+    logs.push({ time, text: String(text), kind: kind || "" });
+    logs = logs.slice(-30);
+    els.logList.innerHTML = logs.map(item => {
+      const color = item.kind === "error" ? "color:#ffb3b3" : (item.kind === "ok" ? "color:#a9e7c4" : "");
+      return `<div style="${color}"><time>${item.time}</time>${escapeHtml(item.text)}</div>`;
+    }).join("");
+    els.logList.scrollTop = els.logList.scrollHeight;
+  }
+
+  function escapeHtml(text) {
+    return String(text).replace(/[&<>"']/g, ch => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    })[ch]);
+  }
+
+  function showError(text) {
+    if (!text) {
+      els.errorBox.className = "alert bad";
+      els.errorBox.textContent = "";
+      return;
+    }
+    els.errorBox.className = "alert bad show";
+    els.errorBox.textContent = text;
+  }
+
+  function showSaved(text, bad) {
+    els.savedAlert.className = "alert " + (bad ? "bad" : "good") + " show";
+    els.savedAlert.textContent = text;
+    clearTimeout(showSaved._timer);
+    showSaved._timer = setTimeout(() => { els.savedAlert.className = "alert good"; }, 6000);
+  }
+
+  function setStatus(ev) {
+    const state = ev.state || "stopped";
+    els.statusDot.className = "dot " + state;
+    els.statusText.textContent = stateLabels[state] || state;
+    els.messageText.textContent = ev.message || "";
+    if (state === "error" && ev.message) showError(ev.message);
+    else if (state === "listening" || state === "demo") showError("");
+  }
+
+  function num(el, fallback) {
+    const raw = String(el.value).trim();
+    if (raw === "") return fallback;
+    const value = Number(raw);
+    return Number.isFinite(value) ? value : fallback;
+  }
+
+  async function loadState() {
+    try {
+      const res = await fetch("/api/state", { cache: "no-store" });
+      const data = await res.json();
+      fillConfig(data.config, data.style);
+      setStatus({ state: data.status, message: data.message });
+      if (data.error) showError(data.error);
+      const audio = data.audio || {};
+      els.audioInfo.textContent = audio.device
+        ? `音频设备：${audio.device}（${audio.rate} Hz / ${audio.channels} ch）`
+        : (data.demo ? "演示模式：未打开音频设备" : "音频设备：未启动");
+      els.wsInfo.textContent = data.ws_url ? `WebSocket：${data.ws_url}` : "";
+      els.overlayUrl.textContent = location.origin + "/overlay";
+      els.overlayLink.href = "/overlay";
+    } catch (err) {
+      showError("读取状态失败：" + err);
+    }
+  }
+
+  async function loadDevices() {
+    try {
+      const res = await fetch("/api/devices", { cache: "no-store" });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "读取设备失败");
+      devices = data;
+      renderDeviceOptions(config.device_index == null ? undefined : config.device_index);
+      addLog(`发现 ${(devices.loopback || []).length} 个回环设备、${(devices.mic || []).length} 个麦克风`, "ok");
+    } catch (err) {
+      addLog("读取设备失败：" + err, "error");
+    }
+  }
+
+  function collect() {
+    const source = sourceValue();
+    const payload = {
+      base_url: els.baseUrl.value.trim(),
+      ws_url: els.wsUrl.value.trim(),
+      model: els.model.value.trim(),
+      language: els.language.value,
+      audio_source: source,
+      max_sentence_silence: num(els.silence, 1000),
+      heartbeat: els.heartbeat.checked,
+      max_task_seconds: num(els.maxTask, 0),
+      demo: els.demo.checked,
+      font_size: num(els.fontSize, 64),
+      max_lines: num(els.maxLines, 2),
+      clear_after: num(els.clearAfter, 8),
+      bottom: num(els.bottomPct, 0),
+      text_color: els.textColorText.value.trim() || "#ffffff",
+      box_color: els.boxColor.value.trim() || "rgba(0,0,0,0.52)",
+      show_status: els.showStatus.checked,
+      device_index: els.device.value === "" ? null : Number(els.device.value)
+    };
+    const key = els.key.value.trim();
+    if (key) payload.api_key = key;
+    return payload;
+  }
+
+  async function save() {
+    const key = els.key.value.trim();
+    if (key && !key.startsWith("sk-")) {
+      showSaved("这看起来不是 API Key：应以 sk- 开头，不要把模型名填到这里。", true);
+      addLog("API Key 格式不对：应以 sk- 开头", "error");
+      return;
+    }
+    els.saveBtn.disabled = true;
+    els.saveBtn.textContent = "保存中…";
+    try {
+      const res = await fetch("/api/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(collect())
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || ("HTTP " + res.status));
+      els.key.value = "";
+      config = data.config;
+      updateKeyHint();
+      showSaved(data.restarted ? "已保存，并按新配置重新启动。" : "已保存。");
+      addLog(data.restarted ? "配置已保存，服务已重启" : "样式已保存", "ok");
+      showError("");
+      await loadState();
+    } catch (err) {
+      showSaved("保存失败：" + err.message, true);
+      addLog("保存失败：" + err.message, "error");
+    } finally {
+      els.saveBtn.disabled = false;
+      els.saveBtn.textContent = "保存并应用";
+    }
+  }
+
+  async function post(url, label) {
+    try {
+      const res = await fetch(url, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || ("HTTP " + res.status));
+      addLog(label, "ok");
+      await loadState();
+    } catch (err) {
+      addLog(label + "失败：" + err, "error");
+      showSaved(label + "失败：" + err.message, true);
+    }
+  }
+
+  function connectEvents() {
+    const es = new EventSource("/api/events");
+    es.onmessage = e => {
+      let ev;
+      try { ev = JSON.parse(e.data); } catch { return; }
+      if (ev.type === "status") {
+        setStatus(ev);
+        addLog((stateLabels[ev.state] || ev.state) + (ev.message ? "：" + ev.message : ""),
+               ev.state === "error" ? "error" : "");
+      } else if (ev.type === "error") {
+        showError(ev.message || "出错");
+        addLog(ev.message || "出错", "error");
+      } else if (ev.type === "caption") {
+        const finals = Array.isArray(ev.finals) ? ev.finals : [];
+        const text = (ev.partial || finals.slice(-1).join(" ")).trim();
+        if (text) els.previewCap.textContent = previewText(text);
+      } else if (ev.type === "snapshot") {
+        if (ev.caption) {
+          const finals = ev.caption.finals || [];
+          const text = (ev.caption.partial || finals.slice(-1).join(" ")).trim();
+          if (text) els.previewCap.textContent = previewText(text);
+        }
+      } else if (ev.type === "clear") {
+        els.previewCap.textContent = "字幕会显示在这里";
+      }
+    };
+    es.onerror = () => addLog("与本地服务的实时连接中断，正在重连…", "error");
+  }
+
+  document.querySelectorAll('input[name="source"]').forEach(el => {
+    el.addEventListener("change", () => renderDeviceOptions(""));
+  });
+  els.deviceRefresh.addEventListener("click", loadDevices);
+  els.saveBtn.addEventListener("click", save);
+  els.restartBtn.addEventListener("click", () => post("/api/restart", "已重新连接"));
+  els.clearBtn.addEventListener("click", () => post("/api/clear", "字幕已清空"));
+
+  [els.fontSize, els.maxLines, els.textColorText, els.boxColor].forEach(el => {
+    el.addEventListener("input", () => {
+      if (el === els.textColorText) els.textColor.value = toHex(el.value);
+      applyStyleToPreview();
+    });
+  });
+  els.textColor.addEventListener("input", () => {
+    els.textColorText.value = els.textColor.value;
+    applyStyleToPreview();
+  });
+
+  // 在输入框里按 Ctrl+Enter 也可以保存
+  document.addEventListener("keydown", e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") save();
+  });
+
+  (async () => {
+    await loadState();
+    await loadDevices();
+    connectEvents();
+  })();
+})();
+</script>
+</body>
+</html>

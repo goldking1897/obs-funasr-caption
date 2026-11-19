@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Qwen-Audio 实时字幕</title>
+<style>
+  :root {
+    --font-size: 64px;
+    --bottom: 6%;
+    --text-color: #ffffff;
+    --box-color: rgba(0, 0, 0, 0.52);
+    --max-lines: 2;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    overflow: hidden;
+  }
+  #stage {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: var(--bottom);
+    display: flex;
+    justify-content: center;
+    pointer-events: none;
+  }
+  #caption {
+    box-sizing: border-box;
+    max-width: 92%;
+    padding: 10px 26px 12px;
+    border-radius: 16px;
+    background: var(--box-color);
+    color: var(--text-color);
+    font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+    font-size: var(--font-size);
+    font-weight: 600;
+    line-height: 1.28;
+    text-align: center;
+    letter-spacing: 0.01em;
+    text-shadow: 0 2px 6px rgba(0,0,0,0.85), 0 0 2px rgba(0,0,0,0.75);
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    /* 最多显示 max_lines 行；超出部分从上方裁掉，保留最新内容。 */
+    max-height: calc(var(--max-lines) * 1.28em + 22px);
+    overflow: hidden;
+    transition: opacity 120ms linear;
+  }
+  #caption.empty { display: none; }
+  /* 只在这里裁切文字：不含上下 padding，避免上一行在 padding 区域露出一截。 */
+  #lines {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    max-height: calc(var(--max-lines) * 1.28em);
+    overflow: hidden;
+  }
+  #caption .line { flex: 0 0 auto; white-space: pre-wrap; }
+  /* max_lines=1 时启用单行省略；默认两行按正常换行。 */
+  #caption.one-line { max-width: 94%; overflow: hidden; text-overflow: ellipsis; }
+  #caption.one-line .line {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #status {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    background: rgba(12, 16, 24, 0.78);
+    color: #cfe3ff;
+    font: 500 15px/1.35 "Microsoft YaHei", "PingFang SC", sans-serif;
+    letter-spacing: 0.02em;
+    opacity: 0;
+    transform: translateY(-4px);
+    transition: opacity 160ms ease, transform 160ms ease;
+  }
+  #status.visible { opacity: 1; transform: translateY(0); }
+  #status.error { color: #ffd6d6; background: rgba(90, 18, 18, 0.86); }
+  #status.demo { color: #d8f5c8; background: rgba(20, 58, 24, 0.84); }
+</style>
+</head>
+<body>
+<div id="stage"><div id="caption" class="empty"><div id="lines"></div></div></div>
+<div id="status"></div>
+<script>
+(() => {
+  "use strict";
+  const captionEl = document.getElementById("caption");
+  const linesEl = document.getElementById("lines");
+  const statusEl = document.getElementById("status");
+  const root = document.documentElement;
+
+  let finals = [];
+  let partial = "";
+  let style = {
+    font_size: 64,
+    max_lines: 2,
+    clear_after: 8,
+    bottom: 6,
+    text_color: "#ffffff",
+    box_color: "rgba(0,0,0,0.52)",
+    show_status: false
+  };
+  let configuredFont = 64;
+  let lastActivity = 0;
+  let statusTimer = 0;
+
+  function escapeHtml(text) {
+    return String(text).replace(/[&<>"']/g, ch => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    })[ch]);
+  }
+
+  function applyStyle(next) {
+    if (!next) return;
+    style = Object.assign({}, style, next);
+    configuredFont = Math.max(18, Math.min(160, Number(style.font_size) || 64));
+    root.style.setProperty("--bottom", (Number(style.bottom) || 0) + "%");
+    root.style.setProperty("--text-color", style.text_color || "#ffffff");
+    root.style.setProperty("--box-color", style.box_color || "rgba(0,0,0,0.52)");
+    root.style.setProperty("--max-lines", String(style.max_lines || 1));
+    render();
+  }
+
+  // 字号固定为配置值；超出宽度时由 CSS 自动换行，不做缩放。
+  // 单行模式（max_lines=1）仍由 CSS 的 nowrap + ellipsis 截断。
+  function applyFontSize() {
+    root.style.setProperty("--font-size", configuredFont + "px");
+  }
+
+  function render() {
+    const maxLines = Math.max(1, Number(style.max_lines) || 1);
+    captionEl.classList.toggle("one-line", maxLines === 1);
+    const keep = partial ? Math.max(0, maxLines - 1) : maxLines;
+    // 注意 slice(-0) 等价于 slice(0)，会把全部 final 都返回。
+    const shown = keep > 0 ? finals.slice(-keep) : [];
+    const html = shown.map(text => `<div class="line">${escapeHtml(text)}</div>`).join("");
+    const partialHtml = partial ? `<div class="line partial">${escapeHtml(partial)}</div>` : "";
+    const next = html + partialHtml;
+    if (linesEl.innerHTML !== next) linesEl.innerHTML = next;
+    const hasText = Boolean(next);
+    captionEl.classList.toggle("empty", !hasText);
+    captionEl.style.opacity = hasText ? "1" : "0";
+    applyFontSize();
+  }
+
+  window.addEventListener("resize", applyFontSize);
+
+  function setStatus(text, kind) {
+    if (!text) { statusEl.className = ""; statusEl.textContent = ""; return; }
+    statusEl.textContent = text;
+    statusEl.className = "visible" + (kind ? " " + kind : "");
+    clearTimeout(statusTimer);
+    if (kind === "error" || kind === "demo") {
+      statusTimer = setTimeout(() => { statusEl.className = ""; }, 8000);
+    }
+  }
+
+  const labels = {
+    starting: "正在启动…",
+    connecting: "正在连接阿里云…",
+    listening: "正在识别",
+    demo: "演示模式",
+    reconnecting: "连接中断，正在重连…",
+    stopped: "已停止",
+    error: "出错了"
+  };
+
+  function handleStatus(ev) {
+    if (!style.show_status) return;
+    const text = labels[ev.state] || ev.state || "";
+    const full = ev.message ? (text + " · " + ev.message) : text;
+    setStatus(full, ev.state === "error" ? "error" : (ev.state === "demo" ? "demo" : ""));
+  }
+
+  function handleEvent(ev) {
+    if (!ev || typeof ev !== "object") return;
+    switch (ev.type) {
+      case "snapshot":
+        applyStyle(ev.style);
+        if (ev.caption) {
+          finals = Array.isArray(ev.caption.finals) ? ev.caption.finals.slice() : [];
+          partial = ev.caption.partial || "";
+          lastActivity = performance.now();
+        }
+        if (ev.status) handleStatus({state: ev.status, message: ev.message});
+        if (ev.error && style.show_status) setStatus(ev.error, "error");
+        render();
+        break;
+      case "caption":
+        finals = Array.isArray(ev.finals) ? ev.finals.slice() : [];
+        partial = ev.partial || "";
+        lastActivity = performance.now();
+        render();
+        break;
+      case "style":
+        applyStyle(ev.style);
+        break;
+      case "status":
+        handleStatus(ev);
+        break;
+      case "error":
+        if (style.show_status) setStatus(ev.message || "出错了", "error");
+        break;
+      case "clear":
+        finals = [];
+        partial = "";
+        render();
+        break;
+    }
+  }
+
+  function connect() {
+    const es = new EventSource("/api/events");
+    es.onmessage = e => {
+      try { handleEvent(JSON.parse(e.data)); } catch (err) { console.warn("bad event", err); }
+    };
+    es.onerror = () => {
+      // EventSource 会自动重连；只有开启状态显示时才打扰观众。
+      if (style.show_status) setStatus("字幕服务连接中断，正在重试…", "error");
+    };
+  }
+
+  setInterval(() => {
+    const clearAfter = Number(style.clear_after) || 0;
+    if (clearAfter > 0 && (finals.length || partial) && lastActivity &&
+        performance.now() - lastActivity > clearAfter * 1000) {
+      finals = [];
+      partial = "";
+      render();
+    }
+  }, 1000);
+
+  connect();
+})();
+</script>
+</body>
+</html>
