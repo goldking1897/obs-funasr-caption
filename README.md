@@ -119,6 +119,27 @@ start.bat
 > 文字超过 94% 宽度时自动换行，但最多只显示 2 行，超出部分从上方裁掉，
 > 保留最新的内容。如果手动改成 1 行，超宽部分会用省略号截断。
 
+## 在 PotPlayer / VLC 上显示
+
+除了 OBS，也可以把字幕直接叠在桌面播放器上。先运行 `start.bat` 启动字幕服务，
+再双击 `player_overlay.bat`：
+
+- 自动查找标题含 `PotPlayer` 或 `VLC` 的窗口，把字幕贴在播放器底部居中；
+- 找不到播放器时固定在屏幕底部；加 `--no-follow` 可强制固定在屏幕底部；
+- 无边框、始终置顶、鼠标穿透，不会挡住播放器操作；
+- 字幕框宽度跟随播放器画面（最大 92%），半透明深色底，默认整体不透明度 0.92；
+- 默认跟随 `PotPlayer,VLC`；也可用 `--follow "mpv,PotPlayer"` 自定义窗口标题关键词；
+- 关闭启动它的控制台，或在控制台按 `Ctrl+C`，即可退出。
+
+```bat
+player_overlay.bat
+player_overlay.bat --no-follow --bottom 8 --opacity 0.85
+player_overlay.bat --font-size 56 --max-lines 2
+```
+
+> 这是桌面叠加层，不是播放器内置字幕。播放器使用「全屏独占」时，Windows
+> 可能不允许其他窗口覆盖在画面上；请改用窗口化或无边框全屏。
+
 ## 控制台功能
 
 - **连接阿里云**：API Key、Base URL、模型名、语言提示、断句静音、自定义 WebSocket 地址；
@@ -278,11 +299,13 @@ obs-funasr-caption/
 ├─ config.py           配置校验与持久化
 ├─ demo.py             本地演示字幕
 ├─ server.py           本地 HTTP / SSE 服务
+├─ player_overlay.py   桌面播放器字幕窗
 ├─ web/
 │  ├─ overlay.html     OBS 字幕页
 │  └─ control.html     控制台
 ├─ tests/              本地测试
-├─ start.bat           一键启动
+├─ start.bat           一键启动字幕服务
+├─ player_overlay.bat  启动桌面播放器字幕窗
 ├─ requirements.txt
 ├─ requirements-dev.txt
 └─ config.example.json
@@ -297,7 +320,8 @@ obs-funasr-caption/
 
 ## 已知限制
 
-- 目前只支持 Windows（WASAPI）；
+- 目前只支持 Windows（WASAPI）；桌面播放器字幕窗也仅支持 Windows；
+- 桌面字幕窗是独立置顶窗口，不是播放器内置字幕；播放器「全屏独占」时可能无法覆盖；
 - 不支持把字幕直接推流到远端 OBS，需要 OBS 和本服务在同一台机器；
 - 单实例运行；多路音频/多语言同时识别需要扩展；
 - 两行模式会先换行，最多显示两行；超出部分从上方裁掉，保留最新内容；
