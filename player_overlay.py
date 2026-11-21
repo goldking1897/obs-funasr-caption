@@ -30,6 +30,7 @@ BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG_PATH = BASE_DIR / "config.json"
 BOX_DEFAULT = "#080a0e"
 TEXT_DEFAULT = "#ffffff"
+KEY_COLOR = "#010203"
 
 
 # ---------- Win32 辅助 ----------
@@ -116,6 +117,23 @@ def set_click_through(root: tk.Tk) -> None:
         pass
 
 
+def set_color_key(window: tk.Misc, color: str = KEY_COLOR) -> None:
+    """把窗口的 key 色变透明，只留下绘制的文字。"""
+    if os.name != "nt":
+        return
+    try:
+        raw = color.lstrip("#")
+        r, g, b = int(raw[0:2], 16), int(raw[2:4], 16), int(raw[4:6], 16)
+        colorref = (b << 16) | (g << 8) | r
+        u = ctypes.windll.user32
+        hwnd = u.GetAncestor(window.winfo_id(), 2)  # GA_ROOT
+        if not hwnd:
+            return
+        u.SetLayeredWindowAttributes(hwnd, colorref, 0, 1)  # LWA_COLORKEY
+    except Exception:
+        pass
+
+
 def set_round_region(root: tk.Tk, width: int, height: int, radius: int) -> None:
     """Clip the native window to a rounded rectangle."""
     if os.name != "nt" or width <= 1 or height <= 1:
@@ -189,8 +207,21 @@ class PlayerOverlay:
         except tk.TclError:
             pass
 
+        # 背景和文字分成两个窗口：背景可用整体 alpha，文字窗口用 color key
+        # 去掉底色，因此文字保持完全不透明。
+        self.text = tk.Toplevel(self.root)
+        self.text.withdraw()
+        self.text.title("Qwen Caption Text")
+        self.text.overrideredirect(True)
+        self.text.attributes("-topmost", True)
+        self.text.configure(bg=KEY_COLOR)
+        try:
+            self.text.wm_attributes("-toolwindow", True)
+        except tk.TclError:
+            pass
+
         self.canvas = tk.Canvas(
-            self.root, bg=BOX_DEFAULT, highlightthickness=0, bd=0,
+            self.text, bg=KEY_COLOR, highlightthickness=0, bd=0,
             relief="flat", takefocus=0,
         )
         self.canvas.pack(fill="both", expand=True)
@@ -235,10 +266,17 @@ class PlayerOverlay:
         self.screen_h = self.root.winfo_screenheight()
         self._configure_geometry()
         self.root.deiconify()
-        self.root.after(80, lambda: set_click_through(self.root))
+        self.root.after(80, self._setup_windows)
         self.root.after(200, self._poll_geometry)
         self.root.after(1000, self._tick_clear)
         self.root.protocol("WM_DELETE_WINDOW", self.close)
+
+    def _setup_windows(self) -> None:
+        if self._closed:
+            return
+        set_click_through(self.root)
+        set_click_through(self.text)
+        set_color_key(self.text)
 
     # ----- 位置与尺寸 -----
 
@@ -269,6 +307,7 @@ class PlayerOverlay:
         self.max_height = self.max_lines * self.line_height + self.pad_top + self.pad_bottom
         self.canvas.configure(width=self.max_width, height=self.max_height)
         self.root.geometry(f"{self.max_width}x{self.max_height}+0+0")
+        self.text.geometry(f"{self.max_width}x{self.max_height}+0+0")
         self.render()
 
     def _position(self, w: int, h: int) -> None:
@@ -276,6 +315,7 @@ class PlayerOverlay:
         y = self.py + self.ph - round(self.ph * self.bottom_pct / 100.0) - h
         y = max(0, y)
         self.root.geometry(f"{w}x{h}+{x}+{y}")
+        self.text.geometry(f"{w}x{h}+{x}+{y}")
 
     def _poll_geometry(self) -> None:
         if self._closed:
@@ -286,7 +326,7 @@ class PlayerOverlay:
                 self._last_player_rect = rect
                 self._configure_geometry()
             if self.partial or self.finals:
-                self.root.lift()
+                self.text.lift()
         except Exception:
             pass
         self.root.after(600, self._poll_geometry)
@@ -316,7 +356,8 @@ class PlayerOverlay:
         self.text_color = parse_color(style.get("text_color"), TEXT_DEFAULT)
         self.box_color = parse_color(style.get("box_color"), BOX_DEFAULT)
         self.root.configure(bg=self.box_color)
-        self.canvas.configure(bg=self.box_color)
+        self.text.configure(bg=KEY_COLOR)
+        self.canvas.configure(bg=KEY_COLOR)
         self._configure_geometry()
 
     def set_caption(self, finals: Any, partial: Any) -> None:
@@ -360,15 +401,22 @@ class PlayerOverlay:
         if not text:
             self.canvas.delete("all")
             self.root.withdraw()
+            self.text.withdraw()
             return
-        self.root.deiconify()
-        self.root.attributes("-topmost", True)
         self.root.configure(bg=self.box_color)
-        self.canvas.configure(bg=self.box_color, width=self.max_width, height=self.max_height)
+        self.text.configure(bg=KEY_COLOR)
+        self.canvas.configure(bg=KEY_COLOR, width=self.max_width, height=self.max_height)
+        set_click_through(self.text)
+        set_color_key(self.text)
+        self.root.deiconify()
+        self.text.deiconify()
+        self.root.attributes("-topmost", True)
+        self.text.attributes("-topmost", True)
         # Use the full available width so wrapping stays stable.
         bbox = self._draw(text, self.max_width, self.max_height)
         if not bbox:
             self.root.withdraw()
+            self.text.withdraw()
             return
         w, h = self.max_width, self.max_height
         self.window_w, self.window_h = w, h
@@ -376,8 +424,11 @@ class PlayerOverlay:
         self._position(w, h)
         self._draw(text, w, h)
         self.root.update_idletasks()
+        self.text.update_idletasks()
         set_round_region(self.root, w, h, self.corner_radius)
+        set_color_key(self.text)
         self.root.lift()
+        self.text.lift()
 
     def _tick_clear(self) -> None:
         if self._closed:
@@ -463,7 +514,7 @@ def main() -> int:
     parser.add_argument("--font-size", type=int, default=None, help="固定字号（像素），默认按画面高度缩放")
     parser.add_argument("--max-lines", type=int, default=None, help="最多显示行数")
     parser.add_argument("--bottom", type=float, default=None, help="距底部百分比")
-    parser.add_argument("--opacity", type=float, default=0.78, help="整体不透明度 0.35-1.0")
+    parser.add_argument("--opacity", type=float, default=0.78, help="背景不透明度 0.35-1.0，文字始终不透明")
     parser.add_argument("--follow", default="PotPlayer,VLC", help="跟随的窗口标题关键词，逗号分隔")
     parser.add_argument("--no-follow", action="store_true", help="不跟随播放器，固定屏幕底部")
     args = parser.parse_args()
