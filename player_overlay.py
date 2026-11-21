@@ -6,7 +6,7 @@ PotPlayer/VLC 窗口；字幕通过本地 SSE 从现有服务读取，不需要 
 用法：
     python player_overlay.py
     python player_overlay.py --no-follow
-    python player_overlay.py --bottom 8 --opacity 0.92
+    python player_overlay.py --bottom 8 --opacity 0.78
 
 退出：关闭启动它的控制台窗口，或在控制台按 Ctrl+C。
 """
@@ -116,6 +116,26 @@ def set_click_through(root: tk.Tk) -> None:
         pass
 
 
+def set_round_region(root: tk.Tk, width: int, height: int, radius: int) -> None:
+    """Clip the native window to a rounded rectangle."""
+    if os.name != "nt" or width <= 1 or height <= 1:
+        return
+    try:
+        u = ctypes.windll.user32
+        g = ctypes.windll.gdi32
+        hwnd = u.GetAncestor(root.winfo_id(), 2)  # GA_ROOT
+        if not hwnd:
+            return
+        r = max(2, radius)
+        rgn = g.CreateRoundRectRgn(0, 0, width + 1, height + 1, r * 2, r * 2)
+        if not rgn:
+            return
+        if not u.SetWindowRgn(hwnd, rgn, True):
+            g.DeleteObject(rgn)
+    except Exception:
+        pass
+
+
 def set_dpi_aware() -> None:
     if os.name != "nt":
         return
@@ -197,6 +217,7 @@ class PlayerOverlay:
         self.pad_x = 26
         self.pad_top = 10
         self.pad_bottom = 12
+        self.corner_radius = 24
         self.window_w = 800
         self.window_h = 180
         self.max_width = 1200
@@ -243,6 +264,7 @@ class PlayerOverlay:
         self.pad_x = max(10, round(26 * scale))
         self.pad_top = max(6, round(10 * scale))
         self.pad_bottom = max(7, round(12 * scale))
+        self.corner_radius = max(10, round(18 * scale))
         self.max_width = max(320, min(round(pw * 0.92), round(self.screen_w * 0.94)))
         self.max_height = self.max_lines * self.line_height + self.pad_top + self.pad_bottom
         self.canvas.configure(width=self.max_width, height=self.max_height)
@@ -353,6 +375,8 @@ class PlayerOverlay:
         self.canvas.configure(width=w, height=h)
         self._position(w, h)
         self._draw(text, w, h)
+        self.root.update_idletasks()
+        set_round_region(self.root, w, h, self.corner_radius)
         self.root.lift()
 
     def _tick_clear(self) -> None:
@@ -439,7 +463,7 @@ def main() -> int:
     parser.add_argument("--font-size", type=int, default=None, help="固定字号（像素），默认按画面高度缩放")
     parser.add_argument("--max-lines", type=int, default=None, help="最多显示行数")
     parser.add_argument("--bottom", type=float, default=None, help="距底部百分比")
-    parser.add_argument("--opacity", type=float, default=0.92, help="整体不透明度 0.35-1.0")
+    parser.add_argument("--opacity", type=float, default=0.78, help="整体不透明度 0.35-1.0")
     parser.add_argument("--follow", default="PotPlayer,VLC", help="跟随的窗口标题关键词，逗号分隔")
     parser.add_argument("--no-follow", action="store_true", help="不跟随播放器，固定屏幕底部")
     args = parser.parse_args()
