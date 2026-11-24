@@ -72,6 +72,7 @@ async def handler(ws) -> None:
     assert payload["model"] == "qwen-audio-3.0-asr-flash-streaming"
     assert payload["parameters"]["sample_rate"] == 16000
     assert payload["parameters"]["format"] == "pcm"
+    assert payload["parameters"]["vocabulary"] == {"阿里云": 50, "FunASR": 5}
     RUN_TASKS.append(message)
 
     await ws.send(
@@ -172,6 +173,7 @@ def main() -> int:
         "base_url": "http://127.0.0.1",
         "ws_url": f"ws://127.0.0.1:{port}/api-ws/v1/inference",
         "model": "qwen-audio-3.0-asr-flash-streaming",
+        "hotwords": ["阿里云=50", "FunASR"],
         "language": "zh",
         "max_sentence_silence": 1000,
         "heartbeat": True,

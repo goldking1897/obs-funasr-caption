@@ -16,6 +16,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 import websocket
 
+from config import build_vocabulary
 from events import CaptionState, EventBus
 
 LOG = logging.getLogger("asr")
@@ -218,13 +219,18 @@ class ASRClient:
         }
         if language:
             parameters["language_hints"] = [language]
+        model = config.get("model") or "qwen-audio-3.0-asr-flash-streaming"
+        if "qwen-audio" in model.lower():
+            vocabulary = build_vocabulary(config.get("hotwords"))
+            if vocabulary:
+                parameters["vocabulary"] = vocabulary
         message = {
             "header": self._task_header("run-task", task_id),
             "payload": {
                 "task_group": "audio",
                 "task": "asr",
                 "function": "recognition",
-                "model": config.get("model") or "qwen-audio-3.0-asr-flash-streaming",
+                "model": model,
                 "parameters": parameters,
                 "input": {},
             },

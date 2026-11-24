@@ -17,6 +17,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "ws_url": "",
     "model": "qwen-audio-3.0-asr-flash-streaming",
     "language": "zh",
+    "hotwords": [],
     "audio_source": "loopback",
     "device_index": None,
     "max_sentence_silence": 1000,
@@ -41,6 +42,7 @@ EDITABLE_KEYS = {
     "ws_url",
     "model",
     "language",
+    "hotwords",
     "audio_source",
     "device_index",
     "max_sentence_silence",
@@ -134,6 +136,91 @@ def _clean_box_color(value: Any) -> str:
     raise ConfigError("box_color 必须是 #RRGGBB、rgb(...) 或 rgba(...)")
 
 
+def _clean_hotwords(value: Any) -> list[str]:
+    if isinstance(value, str):
+        items: list[Any] = value.splitlines()
+    elif isinstance(value, (list, tuple)):
+        items = list(value)
+    elif isinstance(value, dict):
+        items = [f"{key}={weight}" for key, weight in value.items()]
+    else:
+        raise ConfigError("hotwords 必须是字符串或列表")
+
+    out: list[str] = []
+    super_count = 0
+    for item in items:
+        line = str(item).strip()
+        if not line:
+            continue
+        term, weight = line, 5
+        if "=" in line:
+            term, raw_weight = line.rsplit("=", 1)
+            term = term.strip()
+            try:
+                weight = int(raw_weight.strip())
+            except ValueError as exc:
+                raise ConfigError(f"热词权重不是整数：{line}") from exc
+        if not term:
+            raise ConfigError(f"热词不能为空：{line}")
+        if len(term) > 64:
+            raise ConfigError(f"热词太长（最多 64 字）：{term[:20]}…")
+        if weight not in (1, 2, 3, 4, 5, 50):
+            raise ConfigError(f"热词权重只能是 1–5 或 50：{line}")
+        if weight == 50:
+            super_count += 1
+            if super_count > 50:
+                raise ConfigError("超级热词（权重 50）最多 50 个")
+        if len(out) >= 2000:
+            raise ConfigError("热词最多 2000 个")
+        out.append(f"{term}={weight}" if weight != 5 else term)
+    return out
+
+
+def build_vocabulary(value: Any) -> dict[str, int]:
+    """把配置里的常用词转成阿里云即时热词对象。"""
+    if isinstance(value, dict):
+        items = list(value.items())
+    elif isinstance(value, (list, tuple)):
+        items = []
+        for item in value:
+            line = str(item).strip()
+            if not line:
+                continue
+            term, weight = line, 5
+            if "=" in line:
+                term, raw_weight = line.rsplit("=", 1)
+                term = term.strip()
+                try:
+                    weight = int(raw_weight.strip())
+                except ValueError:
+                    weight = 5
+            items.append((term, weight))
+    else:
+        return {}
+
+    result: dict[str, int] = {}
+    super_count = 0
+    for term, raw_weight in items:
+        term = str(term).strip()
+        if not term:
+            continue
+        try:
+            weight = int(raw_weight)
+        except (TypeError, ValueError):
+            weight = 5
+        if weight not in (1, 2, 3, 4, 5, 50):
+            weight = 5
+        if weight == 50:
+            if super_count >= 50:
+                weight = 5
+            else:
+                super_count += 1
+        if len(result) >= 2000:
+            break
+        result[term] = weight
+    return result
+
+
 def validate_patch(patch: dict[str, Any], current: dict[str, Any]) -> dict[str, Any]:
     """校验网页提交的配置片段，返回清洗后的可保存字段。"""
     if not isinstance(patch, dict):
@@ -169,6 +256,8 @@ def validate_patch(patch: dict[str, Any], current: dict[str, Any]) -> dict[str, 
         if value not in LANGUAGE_CHOICES:
             raise ConfigError("不支持的语言代码")
         out["language"] = value
+    if "hotwords" in patch:
+        out["hotwords"] = _clean_hotwords(patch["hotwords"])
     if "audio_source" in patch:
         value = str(patch["audio_source"] or "").strip()
         if value not in ("loopback", "mic", "device"):

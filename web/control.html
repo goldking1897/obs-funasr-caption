@@ -60,7 +60,7 @@
   .row { margin-bottom: 13px; }
   .row:last-child { margin-bottom: 0; }
   label.field { display: block; font-size: 12.5px; color: var(--muted); margin-bottom: 5px; }
-  input[type=text], input[type=password], input[type=number], select {
+  input[type=text], input[type=password], input[type=number], select, textarea {
     width: 100%;
     background: #0f141c;
     border: 1px solid var(--line);
@@ -70,6 +70,7 @@
     font: inherit;
     outline: none;
   }
+  textarea { resize: vertical; min-height: 76px; line-height: 1.5; }
   input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(90,169,255,.14); }
   .hint { color: #7f8da3; font-size: 12px; margin-top: 5px; }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -189,6 +190,11 @@
           <label class="field" for="wsUrl">高级：自定义 WebSocket 地址（可留空）</label>
           <input id="wsUrl" type="text" spellcheck="false" placeholder="wss://.../api-ws/v1/inference">
           <div class="hint">留空时按 Base URL 自动生成；使用工作空间专属域名时可填这里。</div>
+        </div>
+        <div class="row">
+          <label class="field" for="hotwords">常用词 / 热词（每行一个）</label>
+          <textarea id="hotwords" spellcheck="false" placeholder="例：&#10;祺元&#10;洛柯=50"></textarea>
+          <div class="hint">仅 Qwen-Audio 模型生效；默认权重 5，写“词语=50”可设为超级热词（最多 50 个）。这是识别偏置，不保证 100% 替换。</div>
         </div>
       </section>
 
@@ -323,7 +329,7 @@
   const $ = id => document.getElementById(id);
   const els = {
     key: $("key"), keyHint: $("keyHint"), baseUrl: $("baseUrl"), wsUrl: $("wsUrl"),
-    model: $("model"), language: $("language"), silence: $("silence"),
+    model: $("model"), language: $("language"), hotwords: $("hotwords"), silence: $("silence"),
     device: $("device"), heartbeat: $("heartbeat"), maxTask: $("maxTask"), demo: $("demo"),
     fontSize: $("fontSize"), maxLines: $("maxLines"), bottomPct: $("bottomPct"),
     clearAfter: $("clearAfter"), textColor: $("textColor"), textColorText: $("textColorText"),
@@ -440,6 +446,7 @@
     els.wsUrl.value = config.ws_url || "";
     els.model.value = config.model || "qwen-audio-3.0-asr-flash-streaming";
     els.language.value = config.language || "";
+    els.hotwords.value = Array.isArray(config.hotwords) ? config.hotwords.join("\n") : "";
     els.silence.value = config.max_sentence_silence ?? 1000;
     els.heartbeat.checked = !!config.heartbeat;
     els.maxTask.value = config.max_task_seconds ?? 3600;
@@ -539,6 +546,7 @@
       ws_url: els.wsUrl.value.trim(),
       model: els.model.value.trim(),
       language: els.language.value,
+      hotwords: els.hotwords.value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean),
       audio_source: source,
       max_sentence_silence: num(els.silence, 1000),
       heartbeat: els.heartbeat.checked,

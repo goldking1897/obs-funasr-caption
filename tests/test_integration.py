@@ -59,6 +59,7 @@ def main() -> int:
         "base_url": "http://127.0.0.1",
         "ws_url": f"ws://127.0.0.1:{port}/api-ws/v1/inference",
         "model": "qwen-audio-3.0-asr-flash-streaming",
+        "hotwords": ["阿里云=50", "FunASR"],
         "language": "zh",
         "audio_source": "loopback",
         "device_index": None,

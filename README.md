@@ -100,6 +100,21 @@ start.bat
 
 环境变量的优先级高于 `config.json`，且不会写进配置文件。
 
+### 常用词 / 热词
+
+在控制台「常用词 / 热词（每行一个）」里填写专有名词、人名、产品名，识别时会优先输出这些写法：
+
+```text
+阿里云
+FunASR=3
+超级词=50
+```
+
+- 不写权重时默认为 5；权重范围 1–5；
+- `=50` 表示超级热词，最多 50 个；即时热词最多 2000 个；
+- 仅对 `qwen-audio-*` 模型生效，`fun-asr-realtime` 不会发送该参数；
+- 这是**识别偏置**，会提高对应写法的概率，但不会 100% 强制替换同音词。如果必须“听到某个发音就固定输出某个词”，需要在识别结果上再加一层后处理替换。
+
 ### 4. 添加到 OBS
 
 1. 在 OBS 的「来源」里点 `+` →「浏览器」；
@@ -167,6 +182,7 @@ player_overlay.bat --font-size 56 --max-lines 2
 | `ws_url` | `""` | 自定义 WebSocket 地址；留空自动生成 |
 | `model` | `qwen-audio-3.0-asr-flash-streaming` | 模型名；可改回 `fun-asr-realtime` |
 | `language` | `zh` | 语言提示；空字符串为自动 |
+| `hotwords` | `[]` | 常用词/热词列表；元素为 `词语` 或 `词语=权重`，仅 Qwen-Audio 生效 |
 | `audio_source` | `loopback` | `loopback` / `mic` / `device` |
 | `device_index` | `null` | 指定设备索引；`null` 为默认设备 |
 | `max_sentence_silence` | `1000` | 断句静音，200–6000 毫秒 |
@@ -282,11 +298,13 @@ start.bat --port 8766
 .venv\Scripts\python.exe tests\test_audio_capture.py
 .venv\Scripts\python.exe tests\test_integration.py
 .venv\Scripts\python.exe tests\test_events.py
+.venv\Scripts\python.exe tests\test_hotwords.py
 ```
 
 - `test_protocol.py`：校验 `run-task` 字段、鉴权头、音频分片和字幕事件；
 - `test_audio_capture.py`：播放 440 Hz 音调，验证 WASAPI 回环采集与 16k 转换；
-- `test_integration.py`：采集 → 假云端 → SSE 字幕状态的端到端链路。
+- `test_integration.py`：采集 → 假云端 → SSE 字幕状态的端到端链路；
+- `test_hotwords.py`：校验常用词权重、数量上限与配置清洗。
 
 测试需要能播放声音；没有音频设备时 `test_audio_capture.py` 会失败。
 

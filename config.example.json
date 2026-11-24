@@ -4,6 +4,7 @@
   "ws_url": "",
   "model": "qwen-audio-3.0-asr-flash-streaming",
   "language": "zh",
+  "hotwords": [],
   "audio_source": "loopback",
   "device_index": null,
   "max_sentence_silence": 1000,
